@@ -1,0 +1,5 @@
+# Separate environment for reference-compatible CLIP/BERT text embeddings.
+transformers==4.37.2
+torch>=2.5
+numpy
+Pillow

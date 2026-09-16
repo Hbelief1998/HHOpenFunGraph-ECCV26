@@ -1,0 +1,3 @@
+# Unified patches require blank context prefixes; prompts retain their exact bytes.
+*.patch -whitespace
+src/hhofg/frontend2d/**/prompts/*.txt -whitespace

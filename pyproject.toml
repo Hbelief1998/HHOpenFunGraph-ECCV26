@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hhofg"
+version = "0.1.0"
+description = "Hierarchical and Holistic Open-Vocabulary Functional 3D Scene Graphs"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26,<2",
+  "opencv-python<4.12",
+  "open_clip_torch",
+  "Pillow",
+  "plyfile",
+  "PyYAML",
+  "requests",
+  "scikit-learn",
+  "scipy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"hhofg.frontend2d.fs2d" = ["prompts/*.txt", "prompts/*.md"]
+"hhofg.frontend2d.semantics" = ["prompts/*.txt", "prompts/*.md"]

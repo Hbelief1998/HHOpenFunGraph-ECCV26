@@ -1,0 +1,237 @@
+data:
+  dataset: fungraph3d
+  dataset_root: data/OpenFunGraph/FunGraph3D
+  sequence: 3kitchen/video0
+  dataset_config: configs/datasets/fungraph3d.yaml
+  start: 0
+  end: -1
+  stride: 1
+
+lifting:
+  depth_min_m: 0.1
+  depth_max_m: 10.0
+  seed_min_pixels: 5
+  seed_center_radius_px: 2
+  seed_erosion_iterations: 1
+  depth_mode_gap_m: 0.04
+  depth_mode_min_count: 4
+  depth_mode_band_min_m: 0.025
+  depth_mode_mad_scale: 3.0
+  seed_band_m: 0.05
+  parent_guided_depth_enable: true
+  parent_guided_min_child_points: 3
+  parent_band_min_m: 0.025
+  parent_band_mad_scale: 3.0
+  depth_iqr_enable: false
+  dbscan_enable: true
+  adaptive_dbscan_enable: true
+  dbscan_eps_min_m: 0.008
+  dbscan_eps_max_m: 0.06
+  dbscan_pixel_radius: 12.0
+  dbscan_min_samples: 8
+  dbscan_min_keep_points: 4
+  tiny_far_mask_area_ratio: 0.0008
+  tiny_far_depth_m: 1.2
+  tiny_far_dbscan_min_samples: 3
+  tiny_far_min_cluster_points: 3
+  tiny_far_voxel_size_m: 0.0015
+  association_max_points_per_observation: 4096
+  cross_role_uc_box_iou_threshold: 0.90
+  debug_min_points: 1
+  low_quality_cap: 0.30
+  reliable_quality: 0.62
+  provisional_quality: 0.38
+  low_quality: 0.20
+  quality_point_full_scale: 3.0
+  quality_depth_scale_m: 0.05
+  quality_parent_scale_m: 0.04
+  border_penalty: 0.15
+  tiny_far_penalty: 0.05
+  tiny_mask_penalty: 0.10
+  min_mask_area_ratio_for_reliable: 0.00001
+  quality_weights:
+    detection: 0.20
+    mask: 0.15
+    points: 0.20
+    depth_compactness: 0.20
+    cluster_purity: 0.15
+    parent: 0.10
+  min_points: {O: 40, C: 20, U: 8}
+  voxel_size_m: {O: 0.005, C: 0.004, U: 0.004}
+
+appearance:
+  color_space: hsv
+  bins: [12, 12, 12]
+
+clip:
+  arch: ViT-H-14
+  pretrained: laion2b_s32b_b79k
+  device: cuda
+  cache_dir: .cache/clip_text
+  model_cache_dir: .cache/models
+  checkpoint_path: ${CLIP_CHECKPOINT}
+  batch_size: 64
+
+association:
+  weight_iou: 0.5
+  weight_geo: 0.16666666666666666
+  weight_app: 0.16666666666666666
+  weight_sem: 0.16666666666666666
+  sigma_m: 0.08
+  max_distance_m: 0.15
+  min_distance_m: 0.03
+  bbox_diag_scale: 0.5
+  min_score: 0.45
+  require_positive_iou: true
+  min_projected_points: 3
+  depth_aware_projection: true
+  projection_depth_tolerance_m: 0.08
+  projection_percentile_low: 2.0
+  projection_percentile_high: 98.0
+  stable_parent_conflict_gate: true
+  provisional_distance_relaxation: false
+  low_quality_identity_enable: false
+
+map_update:
+  appearance_ema_alpha: 0.3
+  max_points_per_node: 20000
+  association_max_points_per_node: 4096
+  association_voxel_size_m: 0.004
+  stable_min_support_frames: {O: 2, C: 2, U: 2}
+  stable_min_real_depth_frames: {O: 2, C: 2, U: 2}
+  stable_min_quality_ema: 0.55
+  stable_centroid_spread_m: 0.08
+  fusion_min_observation_quality: 0.35
+  fusion_max_centroid_residual_m: 0.12
+  fusion_max_bbox_expansion_ratio: 2.5
+
+track_consolidation:
+  enabled: true
+  merge_min_semantic_similarity: 0.98
+  merge_min_appearance_similarity: 0.0
+  merge_max_centroid_distance_m: 0.05
+  merge_max_centroid_diag_ratio: 0.75
+  merge_anchored_max_centroid_diag_ratio: 1.0
+  merge_anchored_max_surface_gap_diag_ratio: 0.15
+  merge_min_bbox_iou: 0.30
+  merge_bbox_padding_m: 0.005
+  merge_point_distance_m: 0.01
+  merge_min_directional_point_overlap: 0.35
+  merge_min_one_way_point_overlap: 0.65
+  merge_overlap_max_points: 1024
+  anchor_require_stable_child: true
+  anchor_min_parent_support_frames: 1
+  cross_role_duplicate_retirement_enabled: true
+  cross_role_duplicate_min_directional_point_overlap: 0.45
+  cross_role_duplicate_min_one_way_point_overlap: 0.80
+  merge_max_points_per_node: 20000
+  association_max_points_per_node: 4096
+  merge_voxel_size_m: 0.004
+  association_voxel_size_m: 0.004
+
+edge2d:
+  enabled: true
+  backend: llava_hf
+  cache_dir: .cache/edge2d_s2d
+  require_real_s2d: true
+  sdet_threshold: 0.25
+  gcamc_threshold: 0.90
+  score_selected_only: false
+  score_stable_nodes_only: false
+  max_edges_per_frame: 0
+  max_edges_per_run: 0
+  gcamc_dilation_alpha: 0.0
+  gcamc_dilation_radius_px: 2
+  gcamc_support_closing_radius_px: 2
+  prompt_max_side: 768
+  prompt_crop_margin_ratio: 0.25
+  prompt_version: edge2d_llava_v1
+  llava:
+    model_path: ${LLAVA_MODEL_PATH}
+    model_id: llava-v1.6-mistral-7b-hf
+    local_files_only: true
+    device: cuda
+    device_map: auto
+    torch_dtype: float16
+    max_new_tokens: 96
+    temperature: 0.0
+
+candidate_generation:
+  semantic_topk_per_child: 2
+  expand_only_when_observed_missing: true
+
+edge_optimizer:
+  epsilon: 0.0001
+  lambda_entropy: 0.1
+  lambda_temporal: 0.05
+  stable_only: false
+  node_policy: stable_or_confirmed_provisional
+  provisional_min_total_support_frames: 2
+  provisional_min_real_depth_frames: 1
+  provisional_min_anchor_quality: 0.55
+  provisional_min_geometry_quality_ema: 0.50
+  provisional_require_non_border_anchor: true
+  provisional_max_recent_centroid_spread_m: 0.12
+  null_parent_enabled: true
+  null_parent_log_odds: 0.0
+  min_parent_posterior_margin: 0.05
+  # Emit the best measured S2D candidate immediately; confidence only marks
+  # provisional edges. Do not turn unscored semantic pairs into object owners.
+
+remote_relations:
+  enabled: true
+  # A typed LLM prior is sufficient to create a provisional edge.  The other
+  # terms rank competing instances and can replace the current source later.
+  prior_weight: 0.40
+  observed_weight: 0.25
+  distance_weight: 0.15
+  covisibility_weight: 0.15
+  maturity_weight: 0.05
+  distance_scale_scene_fraction: 0.35
+  covisibility_saturation_frames: 3
+
+hierarchy:
+  cprior_default: 0.5
+  cprior_atlas: 0.90
+  cprior_frame: 0.85
+  cprior_allowed_parent: 0.75
+  # AABB is only a fast gate; ranking uses robust point-surface distance.
+  gnear_scale_m: 0.03
+  surface_distance_max_points: 1024
+  surface_distance_near_fraction: 0.20
+  require_semantic_cu_support: true
+  max_surface_distance_m: 0.08
+  min_hierarchy_score: 0.80
+  min_carrier_margin: 0.05
+  semantic_weight: 0.30
+  surface_weight: 0.30
+  observation_weight: 0.40
+  derived_object_completion:
+    enabled: true
+    min_member_carriers: 2
+    max_pair_surface_gap_m: 0.12
+    min_pca_normal_abs_dot: 0.90
+    pca_max_points: 2048
+    min_covis_box_iou: 0.0001
+    min_covis_overlap_frames: 1
+    min_shared_owner_hint_frames: 1
+    min_singleton_owner_hint_frames: 2
+    max_points_per_object: 20000
+    max_association_points_per_object: 4096
+
+stable_parent_context:
+  enabled: true
+  min_support_frames: 2
+  min_support_margin: 1
+
+output:
+  graph_complete: true
+  save_observations: true
+  save_assoc_visualization: true
+  save_ply: true
+  scene_graph_overlay:
+    enabled: true
+    scene_keep_ratio: 1.0
+    clear_scene_near_graph: false
+    random_seed: 0
+  checkpoint_every: 5

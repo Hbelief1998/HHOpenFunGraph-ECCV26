@@ -1,0 +1,100 @@
+data:
+  dataset: fungraph3d
+  dataset_root: data/OpenFunGraph/FunGraph3D
+  sequence: 3kitchen/video0
+  dataset_config: configs/datasets/fungraph3d.yaml
+  start: 0
+  end: -1
+  stride: 1
+  desired_height:
+  desired_width:
+
+rampp:
+  repo: ${RAMPP_REPO}
+  checkpoint: ${RAMPP_CHECKPOINT}
+  device: cuda
+  image_size: 384
+  vit: swin_l
+
+llm:
+  backend: deepseek
+  base_url: https://api.deepseek.com
+  model: deepseek-chat
+  cache_dir: .cache/deepseek
+  cache_only: false
+  pre_atlas_uc_mode: all
+
+scene_lock:
+  m: 2
+  confidence_threshold: 0.8
+  enable_switch: false
+  recheck_every: 10
+  switch_m: 2
+  switch_threshold: 0.85
+  switch_cooldown: 20
+
+frontend2d:
+  input_mode: functional_slam_compatible
+  functional_slam_img_size: 512
+  img_downsample: 1
+  square_ok: false
+  export_raw_coordinates: true
+
+sam3:
+  repo: ${SAM3_REPO}
+  checkpoint: ${SAM3_CHECKPOINT}
+  bpe_path: ${SAM3_BPE_PATH}
+  device: cuda
+  prompt_source: frame_result
+  confidence: 0.3
+  threshold_o: 0.5
+  threshold_c: 0.5
+  threshold_u: 0.5
+  overlap_iou: 0.9
+  u_cover_threshold: 0.95
+  u_cover_pad: 0.0
+  u_parent_contain_threshold: 0.9
+  processor_resolution: 1008
+  force_u: []
+  same_type_drop_multi_parent_links: false
+  drop_parent_without_u: true
+  keep_border_no_link_detections: false
+  save_visualization: true
+
+policy:
+  suppress_objects: [stove]
+  hint_only_objects: [cabinet]
+  enable_cabinet_aggregation: true
+  cabinet_output: true
+  aggregate_candidate_objects: [cabinet]
+  cabinet_scene_prior_labels: [cabinet]
+  cabinet_seed_carriers: [door, drawer]
+  cabinet_unit_labels: [handle, knob]
+  drop_lid_nodes: false
+  drop_lid_when_overlaps_cap: false
+  cap_lid_overlap_iou_thr: 0.9
+  remote_edge_block_labels: []
+  final_local_edge_invariant: false
+  final_drop_labels: []
+  drop_border_u_nodes: false
+  keep_single_frame_cup_handle: false
+  limit_door_drawer_units: false
+  stage1_min_projected_iou: 0.0
+
+method:
+  enable_remote_relations: true
+  remote_win_size: 30
+  remote_confirm_k: 2
+  remote_ambig_delta: 0.2
+
+visualization:
+  draw_selected_local: true
+  draw_candidate_local: false
+  draw_remote_relations: true
+  draw_relation_text: true
+  hide_redundant_ou_when_cu_selected: true
+
+output:
+  root: outputs
+  save_debug_json: true
+  resume: true

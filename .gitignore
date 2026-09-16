@@ -1,0 +1,65 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments and packaging artifacts
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Runtime caches and generated outputs
+.cache/
+outputs/
+logs/
+wandb/
+runs/
+
+# Large local assets and model checkpoints
+/data/
+/datasets/
+/models/
+/checkpoints/
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+
+# Keep package/data-loader source files tracked.
+!src/hhofg/data/
+!src/hhofg/data/*.py
+!tests/data/
+!tests/data/*.py
+!configs/datasets/
+!configs/datasets/*.yaml
+
+# Secrets and local machine config
+.env
+.env.*
+*.pem
+*.key
+*.token
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# External source checkouts and local setup
+third_party/
+configs/paths.local.sh
+*.ply
+*.npz
+*.pdf
+
+# Local validation material
+tests/

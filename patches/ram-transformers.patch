@@ -1,0 +1,215 @@
+--- a/ram/models/bert.py
++++ b/ram/models/bert.py
+@@ -36,12 +36,67 @@
+     SequenceClassifierOutput,
+     TokenClassifierOutput,
+ )
+-from transformers.modeling_utils import (
+-    PreTrainedModel,
+-    apply_chunking_to_forward,
+-    find_pruneable_heads_and_indices,
+-    prune_linear_layer,
+-)
++from transformers.modeling_utils import PreTrainedModel
++try:
++    from transformers.modeling_utils import find_pruneable_heads_and_indices, prune_linear_layer  # old API
++except ImportError:
++    try:
++        from transformers.pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer
++    except ImportError:
++        def find_pruneable_heads_and_indices(heads, n_heads, head_size, already_pruned_heads):
++            heads = set(heads) - already_pruned_heads
++            mask = torch.ones(n_heads, head_size)
++            for head in heads:
++                head = head - sum(1 if h < head else 0 for h in already_pruned_heads)
++                mask[head] = 0
++            mask = mask.view(-1).contiguous().eq(1)
++            index = torch.arange(len(mask))[mask].long()
++            return heads, index
++
++        def prune_linear_layer(layer, index, dim=0):
++            index = index.to(layer.weight.device)
++            weight = layer.weight.index_select(dim, index).clone().detach()
++            if layer.bias is not None:
++                if dim == 1:
++                    bias = layer.bias.clone().detach()
++                else:
++                    bias = layer.bias[index].clone().detach()
++            new_size = list(layer.weight.size())
++            new_size[dim] = len(index)
++            new_layer = nn.Linear(new_size[1], new_size[0], bias=layer.bias is not None).to(layer.weight.device)
++            new_layer.weight.requires_grad = False
++            new_layer.weight.copy_(weight.contiguous())
++            new_layer.weight.requires_grad = True
++            if layer.bias is not None:
++                new_layer.bias.requires_grad = False
++                new_layer.bias.copy_(bias.contiguous())
++                new_layer.bias.requires_grad = True
++            return new_layer
++try:
++    from transformers.modeling_utils import apply_chunking_to_forward
++except ImportError:
++    # Newer Transformers versions dropped this helper, so we keep a local copy
++    def apply_chunking_to_forward(forward_fn, chunk_size, chunk_dim, *input_tensors):
++        if chunk_size <= 0:
++            return forward_fn(*input_tensors)
++        if len(input_tensors) == 0:
++            raise ValueError("apply_chunking_to_forward expects at least one tensor input")
++
++        tensor_shape = input_tensors[0].shape[chunk_dim]
++        if tensor_shape % chunk_size != 0:
++            raise ValueError(
++                f"The input dimension {tensor_shape} is not a multiple of chunk_size {chunk_size}."
++            )
++
++        num_chunks = tensor_shape // chunk_size
++        input_tensors_chunked = tuple(tensor.chunk(num_chunks, dim=chunk_dim) for tensor in input_tensors)
++
++        output_chunks = []
++        for i in range(num_chunks):
++            chunk_inputs = tuple(tensor_chunk[i] for tensor_chunk in input_tensors_chunked)
++            output_chunks.append(forward_fn(*chunk_inputs))
++
++        return torch.cat(output_chunks, dim=chunk_dim)
+ from transformers.utils import logging
+ from transformers.models.bert.configuration_bert import BertConfig
+ 
+@@ -629,6 +684,7 @@
+     config_class = BertConfig
+     base_model_prefix = "bert"
+     _keys_to_ignore_on_load_missing = [r"position_ids"]
++    all_tied_weights_keys = {}
+ 
+     def _init_weights(self, module):
+         """ Initialize the weights """
+@@ -641,6 +697,20 @@
+             module.weight.data.fill_(1.0)
+         if isinstance(module, nn.Linear) and module.bias is not None:
+             module.bias.data.zero_()
++
++    def get_head_mask(self, head_mask, num_hidden_layers, is_attention_chunked=False):
++        if head_mask is None:
++            return [None] * num_hidden_layers
++        if head_mask.dim() == 1:
++            head_mask = head_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
++            head_mask = head_mask.expand(num_hidden_layers, -1, -1, -1, -1)
++        elif head_mask.dim() == 2:
++            head_mask = head_mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
++        dtype = next(self.parameters()).dtype
++        head_mask = head_mask.to(dtype=dtype)
++        if is_attention_chunked:
++            head_mask = head_mask.unsqueeze(-1)
++        return head_mask
+ 
+ 
+ class BertModel(BertPreTrainedModel):
+@@ -1031,5 +1101,3 @@
+         for layer_past in past:
+             reordered_past += (tuple(past_state.index_select(0, beam_idx) for past_state in layer_past),)
+         return reordered_past
+-
+-
+--- a/ram/models/utils.py
++++ b/ram/models/utils.py
+@@ -127,11 +127,48 @@
+         return x
+ 
+ 
++def _resolve_local_hf_snapshot(model_name: str):
++    hf_home = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
++    hub_dir = hf_home / "hub" / f"models--{model_name.replace('/', '--')}"
++    ref_path = hub_dir / "refs" / "main"
++    if not ref_path.is_file():
++        return None
++    try:
++        revision = ref_path.read_text(encoding="utf-8").strip()
++    except OSError:
++        return None
++    if not revision:
++        return None
++    snapshot_dir = hub_dir / "snapshots" / revision
++    if not snapshot_dir.is_dir():
++        return None
++    required_names = ("tokenizer_config.json", "tokenizer.json", "vocab.txt")
++    if not all((snapshot_dir / name).exists() for name in required_names):
++        return None
++    return str(snapshot_dir)
++
++
+ def init_tokenizer(text_encoder_type='bert-base-uncased'):
+-    tokenizer = BertTokenizer.from_pretrained(text_encoder_type)
++    tokenizer_source = text_encoder_type
++    if not os.path.exists(text_encoder_type):
++        local_snapshot = _resolve_local_hf_snapshot(text_encoder_type)
++        if local_snapshot is not None:
++            tokenizer_source = local_snapshot
++    tokenizer = BertTokenizer.from_pretrained(
++        tokenizer_source,
++        local_files_only=bool(
++            os.environ.get("TRANSFORMERS_OFFLINE")
++            or os.environ.get("HF_HUB_OFFLINE")
++            or tokenizer_source != text_encoder_type
++        ),
++    )
+     tokenizer.add_special_tokens({'bos_token': '[DEC]'})
+     tokenizer.add_special_tokens({'additional_special_tokens': ['[ENC]']})
+-    tokenizer.enc_token_id = tokenizer.additional_special_tokens_ids[0]
++    additional_ids = getattr(tokenizer, "additional_special_tokens_ids", None)
++    if additional_ids:
++        tokenizer.enc_token_id = additional_ids[0]
++    else:
++        tokenizer.enc_token_id = tokenizer.convert_tokens_to_ids("[ENC]")
+     return tokenizer
+ 
+ 
+@@ -172,6 +209,26 @@
+     return parsed.scheme in ("http", "https")
+ 
+ 
++def _align_label_embed(model, state_dict):
++    """确保 checkpoint 中的 label_embed 形状与当前模型一致。"""
++    label_key = 'label_embed'
++    if label_key not in state_dict:
++        return
++    model_state = model.state_dict()
++    if label_key not in model_state:
++        return
++    expected_shape = model_state[label_key].shape
++    current_shape = state_dict[label_key].shape
++    if current_shape == expected_shape:
++        return
++
++    print(f"调整 label_embed 形状: checkpoint {current_shape} -> model {expected_shape}")
++    new_weights = model_state[label_key].clone()
++    rows = min(expected_shape[0], current_shape[0])
++    new_weights[:rows] = state_dict[label_key][:rows]
++    state_dict[label_key] = new_weights
++
++
+ def load_checkpoint(model, url_or_filename):
+     if is_url(url_or_filename):
+         cached_file = download_cached_file(url_or_filename,
+@@ -190,6 +247,7 @@
+     if 'visual_encoder_m.pos_embed' in model.state_dict().keys():
+         state_dict['visual_encoder_m.pos_embed'] = interpolate_pos_embed(
+             state_dict['visual_encoder_m.pos_embed'], model.visual_encoder_m)
++    _align_label_embed(model, state_dict)
+     for key in model.state_dict().keys():
+         if key in state_dict.keys():
+             if state_dict[key].shape != model.state_dict()[key].shape:
+@@ -233,6 +291,7 @@
+             state_dict[k.replace("vision_multi",
+                                  "tagging_head")] = state_dict.pop(k)
+ 
++    _align_label_embed(model, state_dict)
+     msg = model.load_state_dict(state_dict, strict=False)
+     print('load checkpoint from %s' % url_or_filename)
+     return model, msg
+@@ -271,6 +330,7 @@
+             state_dict[k.replace("vision_multi",
+                                  "tagging_head")] = state_dict.pop(k)
+ 
++    _align_label_embed(model, state_dict)
+     msg = model.load_state_dict(state_dict, strict=False)
+     print('load checkpoint from %s' % url_or_filename)
+     return model, msg

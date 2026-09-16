@@ -1,0 +1,11 @@
+# COLMAP intrinsics override these fallback values for each image.
+dataset_name: fungraph3d
+camera_params:
+  image_height: 1440
+  image_width: 1920
+  fx: 1580
+  fy: 1580
+  cx: 950
+  cy: 722
+  png_depth_scale: 1000
+  crop_edge: 0

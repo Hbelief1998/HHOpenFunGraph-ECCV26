@@ -1,0 +1,9 @@
+dataset: scenefun3d
+dataset_root: data/OpenFunGraph/SceneFun3D
+sequence:
+dataset_config:
+start: 0
+end: -1
+stride: 1
+desired_height:
+desired_width:
